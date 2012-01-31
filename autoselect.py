@@ -12,16 +12,17 @@ import sublime_plugin
 
 ################################### CONSTANTS ##################################
 
-INIT          =   'init'
-STOREEMPTYS   =   'store_emptys'
-MERGE         =   'merge'
+INIT          = 'init'
+STOREEMPTYS   = 'store_emptys'
+MERGE         = 'merge'
 
-KEY           =   'auto_select'
-SCOPE         =   'string'
+KEY           = 'auto_select'
+SCOPE         = 'autoselect'
+FLAGS         = 1
 
 DEBUG         = 0
 ALL_TESTS     = 1
-TESTS         = DEBUG
+TESTS         = 0
 
 ################################### BINDINGS ###################################
 """
@@ -71,7 +72,7 @@ def debug(*args):
 ################################ REGION HELPERS ################################
 
 def normalized_region(r):
-    return sublime.Region(*(sorted((r.begin(), r.end())) + [r.meta()]))
+    return sublime.Region(*(sorted((r.begin(), r.end())) + [r.xpos()]))
 
 def normalized_regions(rs):
     return (normalized_region(r) for r in rs)
@@ -136,7 +137,7 @@ class PyRegionSet(list):
                 debug( 'r big')
                 r = r.cover(closest)
                 if ix: del self[ix]
-                else: self[ix] = r 
+                else: self[ix] = r
             else:
                 debug( 'isolated insert', ix+1)
                 self.insert(ix+1, r)
@@ -159,6 +160,7 @@ class PyRegionSet(list):
 
 def test_PyRegionSet():
     cb = sublime.set_clipboard
+
     def eq(d1, d2, msg='Objects unequal'):
         if d1 != d2:
             if not isinstance(d1, basestring):
@@ -176,7 +178,7 @@ def test_PyRegionSet():
         def __repr__(self):
             return 'R%s' % sublime.Region.__repr__(self)
 
-    def PRS(*pts):
+    def RS(*pts):
         def inner(buf=[]): # fucking stupid linter
             for i, pt in enumerate(pts):
                 if i % 2: # 1
@@ -184,16 +186,18 @@ def test_PyRegionSet():
                     yield R(*buf)
                 else: # 0
                     buf=[pt]
-        r = RS(inner())
+        return PyRegionSet(inner())
+
+    def PRS(*pts):
+        r = RS(*pts)
         cb = lambda r: sublime.set_clipboard("assert r == %r" % r)
-        s = lambda *a: r.subtract(R(*a)) or cb(r)
-        a = lambda *a: r.add(R(*a)) or cb(r)
+        s  = lambda *a: r.subtract(R(*a)) or cb(r)
+        a  = lambda *a: r.add(R(*a)) or cb(r)
+
         return r, s, a
 
     r, s, a = PRS(1,1,  5,15,  19,19)
     eq(r.closest_selection(R(5, 7)), r[1])
-
-    ALL_TESTS = 1
 
     if ALL_TESTS:
         r, S, A = PRS(0, 10)
@@ -232,7 +236,7 @@ def test_PyRegionSet():
         s(2)
         eq (r, [R(1, 1), R(3, 3), R(5, 8)])
 
-    
+
     if ALL_TESTS:
         r, s, a = PRS(1,1,  5,15, 19,19)
         assert R(5, 7) < R(5, 15)
@@ -257,6 +261,18 @@ def auto_off(view):
     view.erase_status(KEY)
 
 class AutoSelectListener(sublime_plugin.EventListener):
+    def on_modified(self, view):
+        if view.settings().get(KEY):
+            cmd = view.command_history(0)[:2]
+
+            def do():
+                view.run_command('undo')
+                view.run_command('auto_select', {'cmd' : 'merge'})
+                view.run_command(*cmd)
+
+            view.settings().set(KEY, False)
+            sublime.set_timeout(do, 0)
+
     def on_selection_modified(self, view):
         if view.settings().get(KEY):
             if all(s.empty() for s in view.sel()):
@@ -271,10 +287,22 @@ class AutoSelectListener(sublime_plugin.EventListener):
                     else:
                         existing_regions.add(sel)
 
-                view.add_regions(KEY, existing_regions, SCOPE, 1)
+                view.add_regions(KEY, existing_regions, SCOPE,  FLAGS)
 
             view.add_regions( KEY+'.selections', list(view.sel()), '',
                               sublime.HIDDEN )
+
+class SplitExtents(sublime_plugin.TextCommand):
+    def run(self, edit, **args):
+        view = self.view
+        sels = list(view.sel())
+        view.sel().clear()
+        
+        for sel in sels:
+            for pt in (sel.begin(), sel.end()):
+                view.sel().add(sublime.Region(pt))
+        
+        view.run_command('auto_select')
 
 class AutoSelect(sublime_plugin.TextCommand):
     def run(self, edit, cmd=INIT):
@@ -283,7 +311,7 @@ class AutoSelect(sublime_plugin.TextCommand):
         if cmd == INIT:
             view.erase_regions(KEY+'.selections')
             view.erase_regions(KEY)
-            view.add_regions(KEY, list(s for s in view.sel() if not s), SCOPE,1)
+            view.add_regions(KEY, list(s for s in view.sel() if not s), SCOPE, FLAGS)
             return auto_on(view)
 
         if cmd == STOREEMPTYS:
@@ -293,7 +321,7 @@ class AutoSelect(sublime_plugin.TextCommand):
                 cmd = MERGE
             else:
                 return view.add_regions ( KEY,   regions + list(view.sel()),
-                                          SCOPE, 1 )
+                                          SCOPE,  FLAGS )
 
         if cmd == MERGE:
             auto_selected = view.get_regions(KEY)
