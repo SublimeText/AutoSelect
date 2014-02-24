@@ -5,6 +5,7 @@
 import bisect
 import pprint
 import difflib
+import re
 
 # Sublime Libs
 import sublime
@@ -18,6 +19,7 @@ MERGE         = 'merge'
 
 KEY           = 'auto_select'
 SCOPE         = 'autoselect'
+ICON          = 'dot'
 FLAGS         = 1
 
 DEBUG         = 0
@@ -67,12 +69,13 @@ TESTS         = 0
 ##################################### DEBUG ####################################
 
 def debug(*args):
-    if DEBUG: print args
+    if DEBUG: print(args)
 
 ################################ REGION HELPERS ################################
 
 def normalized_region(r):
-    return sublime.Region(*(sorted((r.begin(), r.end())) + [r.xpos()]))
+    xpos = r.xpos() if int(re.sub(r'\D', '', sublime.version())) < 3000 else r.xpos
+    return sublime.Region(*(sorted((r.begin(), r.end())) + [xpos]))
 
 def normalized_regions(rs):
     return (normalized_region(r) for r in rs)
@@ -121,7 +124,7 @@ class PyRegionSet(list):
     def add(self, r):
         if not self: return self.append(r)
 
-        for ix in xrange(self.bisect(r), -1, -1):
+        for ix in range(self.bisect(r), -1, -1):
             closest = self[ix]
             debug( 'r:',       r)
             debug( 'ix:',      ix)
@@ -287,9 +290,9 @@ class AutoSelectListener(sublime_plugin.EventListener):
                     else:
                         existing_regions.add(sel)
 
-                view.add_regions(KEY, existing_regions, SCOPE,  FLAGS)
+                view.add_regions(KEY, existing_regions, SCOPE, ICON, FLAGS)
 
-            view.add_regions( KEY+'.selections', list(view.sel()), '',
+            view.add_regions( KEY+'.selections', list(view.sel()), '', ICON,
                               sublime.HIDDEN )
 
 class SplitExtents(sublime_plugin.TextCommand):
@@ -311,7 +314,7 @@ class AutoSelect(sublime_plugin.TextCommand):
         if cmd == INIT:
             view.erase_regions(KEY+'.selections')
             view.erase_regions(KEY)
-            view.add_regions(KEY, list(s for s in view.sel() if not s), SCOPE, FLAGS)
+            view.add_regions(KEY, list(s for s in view.sel() if not s), SCOPE, ICON, FLAGS)
             return auto_on(view)
 
         if cmd == STOREEMPTYS:
@@ -320,8 +323,8 @@ class AutoSelect(sublime_plugin.TextCommand):
             if all(regions.contains(s) for s in view.sel()):
                 cmd = MERGE
             else:
-                return view.add_regions ( KEY,   regions + list(view.sel()),
-                                          SCOPE,  FLAGS )
+                return view.add_regions ( KEY, regions + list(view.sel()),
+                                          SCOPE, ICON, FLAGS )
 
         if cmd == MERGE:
             auto_selected = view.get_regions(KEY)
