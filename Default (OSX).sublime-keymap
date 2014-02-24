@@ -1,0 +1,36 @@
+[{
+    "keys": ["alt+a"],
+    "command": "auto_select",
+    "args": {"cmd": "init"},
+
+    "context": [{
+        "key": "setting.auto_select",
+        "operand": false,
+        "operator": "equal"
+    }]
+}, {
+    "keys": ["alt+a"],
+    "command": "auto_select",
+    "args": {"cmd": "merge"},
+
+    "context": [{
+        "key": "setting.auto_select",
+        "operand": true,
+        "operator": "equal"
+    }]
+}, {
+    "keys": ["alt+a"],
+    "command": "auto_select",
+    "args": {"cmd": "store_emptys"},
+
+    "context": [{
+        "key": "setting.auto_select",
+        "operand": true,
+        "operator": "equal"
+    }, {
+        "key": "selection_empty",
+        "match_all": true,
+        "operand": true,
+        "operator": "equal"
+    }]
+}]
